@@ -7,14 +7,7 @@
 
 using namespace std;
 
-#include "DArray"
-/*
-    Author	: Vidhu S. Pandey
-    Description	: A template class implementation of graph
-    Date	: 1/11/2005
-    
-    Copyright. All rights reserved.
-*/
+
 
 template <class T>
 class edge;  //forward declaration
