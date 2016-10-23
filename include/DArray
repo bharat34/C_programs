@@ -2,10 +2,6 @@
 #define __INCLUDED_DARRAY 
 #include <iostream>
 
-/*	AUTHOR		: Vidhu S. Pandey
-	DESCRIPTION	: Dynamic one dimension array, random access
-	USAGE		:
-*/ 
 
 
 template <class T>
