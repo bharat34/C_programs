@@ -1,9 +1,3 @@
-// 
-// File:   Ring.h
-// Author: vidhu
-//
-// Created on August 28, 2006, 11:23 AM
-//
 
 #ifndef _Ring_H
 #define	_Ring_H
