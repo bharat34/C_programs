@@ -1,0 +1,794 @@
+#ifndef __INCLUDED_GRAPH
+#define __INCLUDED_GRAPH 
+#include <vector>
+#include <stack>
+#include <iostream>
+#include <queue>
+
+# Written by Bharat Lakhani (06-15-15)
+# pdb connectivity information using graoh theory
+using namespace std;
+
+#include "DArray"
+
+template <class T>
+class edge;  //forward declaration
+
+template <class T>
+class vertex{
+public:
+	T info;
+	int coloured;		// 1 for coloured 0 for uncoloured
+	int distance;		// distance from a particular node
+	int degree; 		// no of edges incident on the vertex
+	vertex<T> *next;
+	edge<T> *edges;
+};
+
+template <class T>
+class edge{
+public:
+	int weight;            //single bond double bond etc
+	vertex<T> *end;
+	edge<T> *next;
+};
+
+template <class T>
+class Graph{
+private:
+	unsigned n;////no of nodes
+	vertex<T> *startVertex,*endVertex,*pointer;
+	vertex<T> *makeVertex();
+	edge<T> *makeEdge();
+	void resetColour(); 			// uncolours all the vertices
+	void printEdge(vertex<T>*);   		///print()
+	DArray<vertex<T>* > index;		///for access to the array dynamically indexed on node no.
+public:
+	
+	Graph();
+	Graph(const Graph<T> &); ////////copy constructor/////////
+	Graph<T>& operator=(const Graph<T>&);
+	void addVertex(T);
+	void buildIndex();
+	void addEdge(const T&,const T&);
+	void addEdge(vertex<T>*,vertex<T>*,int=0);
+	void addEdge(string,string,unsigned);  ///this function adds edge between two atom of a residue for Protein.
+//	void removeEdge(unsigned,unsigned);
+	void removeEdge(vertex<T>*,vertex<T>*); 
+	void join(Graph<T>&);
+	void remove(Graph<T>&);
+	//void addEdge(T,T);
+	vertex<T>* moveNext();
+	vertex<T>* moveFirst();	
+	vertex<T>* moveLast();	
+	vertex<T> *findVertex(const T&);
+	vertex<T> *findVertex(unsigned);
+	vertex<T> *findVertex(unsigned,string);
+	void initializeDistance(int);
+	void setDegree();
+	vector<int>  shortestPath(int,int); 
+	int shortestDistance(int,int);
+	bool isNonBonded(unsigned,unsigned);
+	vector<int> BFS(int);
+	vector<int> DFS(int);
+	vector<vector<int> > findCycle(int argAtomNo);
+	void print();
+	void printVertex();           		///print()
+	unsigned size() const { return n; } 
+	void clear();
+	T& operator[](unsigned in) const{return(index[in -1]->info);}
+	~Graph();
+};
+
+template <class T>
+Graph<T>::Graph()
+{
+	startVertex = endVertex = pointer = NULL;
+	n=0;
+}
+
+
+/////////////copy constructor///////////////////////
+# Last Modified by Bharat (08-10-15)
+template <class T>
+Graph<T>::Graph(const Graph<T>& gr) ///////////////
+{
+	startVertex = endVertex = pointer = NULL;
+	n=0;
+	vertex<T>* tmpVer;
+	edge<T>* tmpEdge;
+	for(tmpVer=gr.startVertex;tmpVer!=NULL;tmpVer=tmpVer->next)  
+		addVertex(tmpVer->info);	
+	
+	for(tmpVer=gr.startVertex;tmpVer!=NULL;tmpVer=tmpVer->next)  
+		for(tmpEdge=tmpVer->edges;tmpEdge!=NULL;tmpEdge=tmpEdge->next)
+			addEdge(tmpVer->info,tmpEdge->end->info);
+	
+	buildIndex();
+}
+
+
+template <class T>
+Graph<T>& Graph<T>::operator=(const Graph<T>& gr){
+	startVertex = endVertex = pointer = NULL;
+	n=0;
+
+	if(&gr == this) return *this;
+
+	clear();
+	vertex<T>* tmpVer;
+	edge<T>* tmpEdge;
+	for(tmpVer=gr.startVertex;tmpVer!=NULL;tmpVer=tmpVer->next)  
+		addVertex(tmpVer->info);	
+	
+	for(tmpVer=gr.startVertex;tmpVer!=NULL;tmpVer=tmpVer->next)  
+		for(tmpEdge=tmpVer->edges;tmpEdge!=NULL;tmpEdge=tmpEdge->next)
+			addEdge(tmpVer->info,tmpEdge->end->info);
+	
+	buildIndex();
+	return *this;
+}
+
+
+template <class T>
+vertex<T>* Graph<T>::moveNext(){
+
+	if(pointer){
+		pointer = pointer->next;
+		return pointer;
+	}
+	return NULL;
+}
+
+template <class T>
+vertex<T>* Graph<T>::moveFirst(){
+	pointer = startVertex;
+	return pointer;
+}
+
+template <class T>
+vertex<T>* Graph<T>::moveLast(){
+	pointer = endVertex;
+	return pointer;
+
+}
+
+
+template <class T>
+vertex<T>* Graph<T>::makeVertex()
+{
+	vertex<T>* tmp;
+	tmp = new vertex<T>;
+	if(!tmp) cout << "INSUFFICIENT MEMORY - Graph::makeVertex()" << endl;
+	tmp->next = NULL;
+	tmp->edges = NULL;
+	return tmp;
+}
+
+template <class T>
+void Graph<T>::initializeDistance(int argn){
+
+	vertex<T>* tmp;
+
+	for(tmp=startVertex;tmp!=NULL;tmp=tmp->next)
+		tmp->distance =argn;
+
+}
+
+template <class T>
+void Graph<T>::resetColour(){ // uncolours all the vertices
+
+	vertex<T>* tmp;
+
+	for(tmp=startVertex;tmp!=NULL;tmp=tmp->next)
+		tmp->coloured = 0;
+}
+
+template <class T>
+void Graph<T>::setDegree(){
+
+	vertex<T>* tmpVert;
+	edge<T>* tmpEdge;
+	int countEdge;
+
+	for(tmpVert=startVertex;tmpVert != NULL;tmpVert=tmpVert->next){
+
+		countEdge=0;
+		for(tmpEdge = tmpVert->edges;tmpEdge != NULL;tmpEdge = tmpEdge->next) //counts the no. of edges
+			countEdge++;
+
+		tmpVert->degree = countEdge;
+	}
+}
+
+////// allocates a new edge and returns the pointer of that edge //////
+template <class T>
+edge<T>* Graph<T>::makeEdge()  
+{
+	edge<T>* tmp;
+	tmp = new edge<T>;
+	if(!tmp) cout << "INSUFFICIENT MEMORY - Graph::makeEdge()" << endl;
+	tmp->next = NULL;
+	tmp->end =NULL;
+	return tmp;
+}
+
+///// adds a new vertex to the graph  //////////
+template <class T>
+void Graph<T>::addVertex(T argItem)///public
+{
+	vertex<T>*  temp;
+	temp=makeVertex();
+	temp->info=argItem;
+	if(startVertex==NULL)
+	{
+		startVertex=endVertex=temp;
+	}
+	else
+	{	
+		endVertex->next=temp;
+		endVertex=temp;
+	}
+	n++;
+}
+
+///// creates a new edge between two vertices ////////////
+template <class T>
+void Graph<T>::addEdge(vertex<T>* argVertex1,vertex<T>* argVertex2,int argWt)  ///public
+{
+	if((argVertex1==NULL)||(argVertex2==NULL))
+		return;
+	edge<T>* temp,*endEdge;
+
+	temp = makeEdge();	
+	temp->weight = argWt;
+	temp->end=argVertex2;
+
+	if(argVertex1->edges==NULL)
+		argVertex1->edges=temp;
+	
+	else{	
+		for(endEdge=argVertex1->edges;endEdge->next!=NULL;endEdge=endEdge->next);
+			endEdge->next=temp;	
+	}
+}
+///// creates a new edge overload  between two atoms of a given residue ////////////
+template <class T>
+void Graph<T>::addEdge(string atm1,string atm2,unsigned residueNo)  ///public
+{
+	vertex<T> *ver1, *ver2;
+	
+	ver1=findVertex(residueNo,atm1);
+	ver2=findVertex(residueNo,atm2);
+	addEdge(ver1,ver2);
+	addEdge(ver2,ver1);
+
+}
+
+template <class T>
+void Graph<T>::addEdge(const T& info1,const T& info2)  ///public
+{
+	vertex<T> *ver1, *ver2;
+	
+	ver1=findVertex(info1);
+	ver2=findVertex(info2);
+	addEdge(ver1,ver2);
+
+}
+
+//////Removes the edge between two adjacent residue /////////////////
+template <class T>
+void Graph<T>::removeEdge(vertex<T>* ver1,vertex<T>* ver2) 
+{
+	edge<T> *tmpEdge1,*tmpEdge2;
+	
+	if(ver1->edges->end==ver2)
+	{
+		tmpEdge1=ver1->edges;
+		ver1->edges=tmpEdge1->next;
+		delete tmpEdge1;
+		return;
+	}
+
+	else
+	{
+		for(tmpEdge2=ver1->edges;tmpEdge2->next!=NULL;tmpEdge2=tmpEdge2->next)
+		{
+			if(tmpEdge2->next->end==ver2)
+			{
+				tmpEdge1=tmpEdge2->next;
+				tmpEdge2->next=tmpEdge1->next;
+				delete tmpEdge1;
+				return;
+			}
+		}
+	}
+}
+
+template <class T>
+void Graph<T>::join(Graph<T>& gr)
+{
+	vertex<T> *ver1, *ver2;
+	ver1=findVertex(startVertex->info.getResidueSequence(),"C");
+	ver2=gr.findVertex(gr.startVertex->info.getResidueSequence(),"N");
+
+	addEdge(ver1,ver2);
+	gr.addEdge(ver2,ver1);
+	endVertex->next = gr.startVertex;
+	n=n+gr.n; // adding the nodes of the other graph
+
+} 
+
+template <class T>
+void Graph<T>::remove(Graph<T>& gr)
+{
+	vertex<T> *ver1, *ver2;
+	ver1=findVertex(startVertex->info.getResidueSequence(),"C");
+	ver2=gr.findVertex(gr.startVertex->info.getResidueSequence(),"N");
+
+	removeEdge(ver1,ver2);
+	gr.removeEdge(ver2,ver1);
+	endVertex->next=NULL;
+	n=n-gr.n; // removing the nodes of the other graph
+}
+
+template <class T>
+vertex<T>* Graph<T>::findVertex(const T& item) 
+{
+	vertex<T>* tmp;
+	for(tmp=startVertex;tmp!=NULL;tmp=tmp->next)
+	{	
+		if(tmp->info==item)
+			return tmp;
+	}
+	return NULL;
+}
+ 
+template <class T>
+vertex<T>* Graph<T>::findVertex(unsigned argAtomNo) 
+{
+	vertex<T>* tmp;
+	for(tmp=startVertex;tmp!= NULL;tmp=tmp->next)
+	{	
+		if(tmp->info.getAtomSerial() == argAtomNo)
+			return tmp;
+	}
+	return NULL;
+}
+
+template <class T>
+vertex<T>* Graph<T>::findVertex(unsigned aminoNo,string atom)
+{
+	vertex<T>* tmp;
+	for(tmp=startVertex;tmp!=NULL;tmp=tmp->next)
+	{
+		if((tmp->info.getResidueSequence()==aminoNo)&&(tmp->info.getAtomName()==atom))
+			return tmp;
+	}
+	return NULL;
+}
+
+template <class T>
+vector<int>  Graph<T>::shortestPath(int argAtomNo1,int argAtomNo2){
+	vertex<T> *tmpVert1, *tmpVert2;
+	edge<T>   *tmpEdge;
+	std::queue <vertex<T>* > que;	//que -> holds the vertex element using the properties enqueue(to insert),deque 
+	vector<int> originList,queList,pathList;	//list->traversal linklist,originList->maintain 
+	stack<int> stk;//to reverse
+	unsigned tmp,flag;//flag to break out of  the outer loop
+	
+	if(argAtomNo1==argAtomNo2){
+		pathList.push_back(argAtomNo1);
+		return pathList;
+	}
+
+	resetColour();//uncolours the graph
+	initializeDistance(-1);//sets distances of all nodes to -1
+
+	tmpVert1 = findVertex(argAtomNo1);
+
+	que.push(tmpVert1); ////insert first time
+	tmpVert1->coloured=1;
+	tmpVert1->distance=0;
+	queList.push_back(tmpVert1->info.getAtomSerial());
+	originList.push_back(0);
+
+
+//	cout << "BREADTH FIRST SEARCH" << endl;
+
+	while (!que.empty()){
+		
+		tmpVert1=que.front();
+		que.pop();
+
+	//	list.add(tmpVert1->info.getAtomSerial());///not used in this program as yet 
+
+		flag=0;
+		for(tmpEdge=tmpVert1->edges;tmpEdge != NULL;tmpEdge=tmpEdge->next){
+		
+			tmpVert2 = tmpEdge->end;
+		
+			if(tmpVert2->coloured == 0){ 
+
+				tmpVert2->distance = tmpVert1->distance+1;
+
+				if((tmpVert2->info.getAtomSerial() == (unsigned)argAtomNo2)||(tmpVert2->distance==4)){
+				
+	//				list.add(tmpVert2->info.getAtomSerial());
+					queList.push_back(tmpVert2->info.getAtomSerial());
+					originList.push_back(tmpVert1->info.getAtomSerial());
+					flag=1;
+			//		queList.print();
+			//		originList.print();
+					break;
+				}
+
+
+				que.push(tmpVert2);
+				tmpVert2->coloured=1;
+				queList.push_back(tmpVert2->info.getAtomSerial());
+				originList.push_back(tmpVert1->info.getAtomSerial());
+			}
+		}
+		if(flag==1)
+			break;
+	}
+		
+	//queList.print();
+	//originList.print();
+
+	tmp = queList[queList.size()-1];
+
+	while(tmp!=(unsigned)argAtomNo1){
+
+		stk.push(tmp);
+
+		for(unsigned i=0;i<queList.size();i++)
+			if((unsigned)queList[i] == tmp)
+				tmp = originList[i];
+	}
+	stk.push(tmp);
+
+	while(!stk.empty()){
+		pathList.push_back(stk.top());
+		stk.pop();	
+	}
+
+	
+	return pathList;
+
+}
+
+template <class T>
+int  Graph<T>::shortestDistance(int argAtomNo1,int argAtomNo2){
+
+	vertex<T>* tmpVert1,*tmpVert2;
+	edge<T>* tmpEdge;
+	std::queue< vertex<T>* > que; 
+	int tmp,i,flag;//flag to break out of  the outer loop
+	
+	if(argAtomNo1==argAtomNo2){
+		return 0;
+	}
+
+	resetColour();//uncolours the graph
+	initializeDistance(-1);//sets distances of all nodes to -1
+
+	tmpVert1 = findVertex(argAtomNo1);
+
+	que.push(tmpVert1); ////insert first time
+	tmpVert1->coloured=1;
+	tmpVert1->distance=0;
+
+
+	while (!que.empty()){
+		
+		tmpVert1=que.front();
+		que.pop();
+
+		flag=0;
+		for(tmpEdge=tmpVert1->edges;tmpEdge != NULL;tmpEdge=tmpEdge->next){
+		
+			tmpVert2 = tmpEdge->end;
+		
+			if(tmpVert2->coloured == 0){ 
+
+				tmpVert2->distance = tmpVert1->distance+1;
+
+				if((tmpVert2->info.getAtomSerial() == argAtomNo2)){ 
+				
+					flag=1;
+					break;
+				}
+
+				que.push(tmpVert2);
+				tmpVert2->coloured=1;
+			}
+		}
+		if(flag==1)
+			break;
+	}
+		
+	return tmpVert2->distance;
+
+}
+
+//This function returns 1 if distance between atoms exceeds 3 
+template <class T>
+bool  Graph<T>::isNonBonded(unsigned argAtomNo1,unsigned argAtomNo2){
+
+	vertex<T>* tmpVert1,*tmpVert2;
+	edge<T>* tmpEdge;
+	std::queue< vertex<T>* > que;////que -> holds the vertex element using the properties  enqueue(to insert), dequeue(to take out) 
+	int tmp,i,flag;//flag to break out of  the outer loop
+	
+	if(argAtomNo1==argAtomNo2)
+		return 0;
+
+	resetColour();//uncolours the graph
+	initializeDistance(-1);//sets distances of all nodes to -1
+
+	tmpVert1 = findVertex(argAtomNo1);
+
+	que.push(tmpVert1); ////insert first time
+	tmpVert1->coloured=1;
+	tmpVert1->distance=0;
+
+
+	while (!que.empty()){
+		
+		tmpVert1=que.front();
+		que.pop();
+
+		flag=0;
+		for(tmpEdge=tmpVert1->edges;tmpEdge != NULL;tmpEdge=tmpEdge->next){
+		
+			tmpVert2 = tmpEdge->end;
+		
+			if(tmpVert2->coloured == 0){ 
+
+				tmpVert2->distance = tmpVert1->distance+1;
+
+				if((tmpVert2->info.getAtomSerial() == argAtomNo2)||(tmpVert2->distance==4)){ 
+				
+					flag=1;
+					break;
+				}
+
+				que.push(tmpVert2);
+				tmpVert2->coloured=1;
+			}
+		}
+		if(flag==1)
+			break;
+	}
+		
+	if( (tmpVert2->distance) <  4 )
+		return 0;
+	else
+		return 1 ;
+
+}
+
+template <class T>
+vector<int> Graph<T>::BFS(int argAtomNo){
+
+	vertex<T>* tmp1,*tmp3;
+	edge<T>* tmp2;
+	std::queue< vertex<T>*> que;
+	vector<int> list;
+//	vector<vertex<T>*> priorityList;
+
+	resetColour(); //uncolours the graph
+
+	tmp1 = findVertex(argAtomNo);
+
+	que.push(tmp1);
+	tmp1->coloured=1;
+
+//	cout << "BREADTH FIRST SEARCH" << endl;
+
+	while (!que.empty()){
+		
+		tmp1=que.front();
+		que.pop();
+
+		list.push_back(tmp1->info.getAtomSerial());
+
+	//	cout << tmp1->info.getAtomSerial() << "   ";
+
+		for(tmp2=tmp1->edges;tmp2 != NULL;tmp2=tmp2->next){
+			tmp3 = tmp2->end;
+			if(tmp3->coloured== 0){ 
+				que.push(tmp3);
+				tmp3->coloured=1;
+			}
+		}
+	}
+//	cout <<  endl << endl;
+	return list;
+}
+
+
+//returns list of all cycles
+template <class T>
+vector<vector<int> > Graph<T>::findCycle(int argAtomNo){
+
+	vertex<T>* tmp1,*tmp3;
+	edge<T>* tmp2;
+	stack<vertex<T>*> stk;
+	vector<int> ringList;
+	vector<vector<int> > rings;
+	DArray<int> fatherList(n+1);
+	int lp1,lp2,father;
+	resetColour();
+	const int STARTATOM = startVertex->info.getAtomSerial(); 
+
+	tmp1 = findVertex(argAtomNo);
+
+//cout << tmp1->info.getResidueName() << " " <<tmp1->info.getResidueSequence() << "   " << n << endl;
+	//colour 0 - unvisited, 1 - discovered, 2 - visited
+
+	stk.push(tmp1);
+	tmp1->coloured = 1; // discovered
+	fatherList[0] = -1;
+
+	while(!stk.empty()){
+
+		tmp1 = stk.top();
+		stk.pop();
+		tmp1->coloured = 2; //visited
+
+		//list.push_back(tmp1->info.getAtomSerial());
+
+		for(tmp2 = tmp1->edges;tmp2 != NULL;tmp2=tmp2->next){
+			tmp3 = tmp2->end;
+			if(tmp3->coloured == 0){
+				stk.push(tmp3);
+				tmp3->coloured = 1; // discovered
+				fatherList[tmp3->info.getAtomSerial()-STARTATOM] = tmp1->info.getAtomSerial();
+			//	cout << tmp3->info.getAtomSerial() << "  " << fatherList[tmp3->info.getAtomSerial()] << endl;
+			}
+			else if(tmp3->coloured==1  ){
+	//			cout << "\nCYCLE" << "   ";
+				lp1 =  tmp1->info.getAtomSerial();
+				lp2 =  tmp3->info.getAtomSerial();
+			//	cout << lp2 << "   " << lp1 <<endl;
+				
+				father = lp1;
+		//		cout<< fatherList[lp2-STARTATOM]<< "  "  << lp2 << "  ";
+				
+				ringList.clear();
+				ringList.push_back(fatherList[lp2-STARTATOM]);	
+				ringList.push_back(lp2);	
+				
+				while(father!=fatherList[lp2-STARTATOM]){
+			//		cout << father << "  ";
+					ringList.push_back(father);	
+					father = fatherList[father-STARTATOM];
+				}
+				rings.push_back(ringList);
+		//		cout << endl;
+			}
+		
+		}
+	}
+	return rings;
+}
+
+template <class T>
+vector<int> Graph<T>::DFS(int argAtomNo){
+
+	vertex<T>* tmp1,*tmp3;
+	edge<T>* tmp2;
+	stack<vertex<T>*> stk;
+	vector<int> list;
+
+	resetColour();
+
+	tmp1 = findVertex(argAtomNo);
+
+	stk.push(tmp1);
+	tmp1->coloured = 1;
+
+//	cout << "DEPTH FIRST SEARCH" << endl;
+
+	while(!stk.empty()){
+
+		tmp1 = stk.top();
+		stk.pop();
+
+		list.push_back(tmp1->info.getAtomSerial());
+
+//		cout << tmp1->info.getAtomSerial() << "   ";
+
+		for(tmp2 = tmp1->edges;tmp2 != NULL;tmp2=tmp2->next){
+			tmp3 = tmp2->end;
+			if(tmp3->coloured == 0){
+				stk.push(tmp3);
+				tmp3->coloured = 1;
+			}
+		}
+	}
+//	cout <<  endl << endl;
+	return list;
+}
+
+
+/////////////////////////print all vertex////////////////////////////////
+template <class T>
+void Graph<T>::printVertex() // prints all the vertices
+{
+	vertex<T>* tmp;
+	for(tmp=startVertex;tmp!=NULL;tmp=tmp->next)
+	{
+		cout<<tmp->info.getAtomSerial()<<"   "<<tmp->info.getAtomName() <<endl;
+	}
+}
+/////////////////////////print edges or the neighbouring vertex///////////
+template <class T>
+void Graph<T>::printEdge(vertex<T>* argVertex) 
+{
+	edge<T>* tmp;
+	for(tmp=argVertex->edges;tmp!=NULL;tmp=tmp->next)
+//		cout<<"  "<< tmp->end->info.getAtomSerial() << "(" << tmp->weight << ") "  ;
+		cout<<"  "<< tmp->end->info.getAtomSerial() << " " << tmp->end->info.getAtomName() << "    ";
+}
+
+/////////////////////////print graph////////////////////////////////////
+template <class T>
+void Graph<T>::print() // prints the whole graph (vertex followed by its adjoining vertices )
+{
+	vertex<T>* tmp;
+//	cout<<"First "<<startVertex->info.<<"            "<<startVertex->edges->end->info.getAtomSerial()<<endl;
+	for(tmp=startVertex;tmp!=NULL;tmp=tmp->next)
+	{
+//		cout<<tmp->info.getAtomSerial() << "{" << tmp->degree << "}" <<"    ";
+		cout<<tmp->info.getAtomSerial() << "  " << tmp->info.getAtomName()<<"    ";
+		printEdge(tmp);
+		cout<<endl;
+	}
+}
+
+template <class T>
+Graph<T>::~Graph(){
+	clear();			
+}
+
+template <class T>
+void Graph<T>::clear(){
+
+	vertex<T> *tmpVert,*storeVert;
+	edge<T> *tmpEdge,*storeEdge;
+
+	tmpVert = startVertex;
+	while(tmpVert){
+		tmpEdge=tmpVert->edges;
+		
+		while(tmpEdge){
+			storeEdge = tmpEdge->next;
+			delete tmpEdge;
+			tmpEdge = storeEdge;
+		}
+		
+		storeVert = tmpVert->next;
+		delete tmpVert;
+		tmpVert = storeVert;
+	}
+	startVertex = endVertex = pointer = NULL;
+	n=0;
+}
+
+template <class T>
+void Graph<T>::buildIndex()
+{
+	vertex<T>* temp;
+	index.create(n);
+	unsigned i=0;
+	for(temp=startVertex;temp!=NULL;temp=temp->next)
+	{
+		index[i]=temp;
+		i++;		
+	}
+}
+#endif	
